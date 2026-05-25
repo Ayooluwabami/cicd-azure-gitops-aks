@@ -1,0 +1,18 @@
+# All pods need DNS resolution (kube-dns in kube-system namespace).
+# Without this, containers cannot resolve service names or external hosts
+# after the default-deny policy is applied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: microservices
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

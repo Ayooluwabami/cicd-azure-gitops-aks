@@ -1,0 +1,56 @@
+# Pre-commit hooks — run automatically on every git commit.
+#
+# Install once per developer machine:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Why: the same checks that gate the CI pipeline should also run locally.
+# "No surprises at merge time" — a secret scan failure on a CI server
+# means a credential may already be in git history. Catch it here first.
+
+repos:
+  # ── Secret scanning ─────────────────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4    # pinned to commit-stable tag; never use 'latest' here
+    hooks:
+      - id: gitleaks
+        name: "Detect hardcoded secrets (Gitleaks)"
+        # Zero tolerance — any finding blocks the commit.
+
+  # ── General hygiene ─────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+        name: "Block private key files"
+      - id: no-commit-to-branch
+        args: [--branch, main]
+        name: "Block direct commits to main (use a PR)"
+
+  # ── Dockerfile linting ──────────────────────────────────────────────────────
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        name: "Lint Dockerfiles (hadolint)"
+        args:
+          - --failure-threshold=warning
+          # DL3008: apt-get without pinned version — warn, not block, in student context
+          - --ignore=DL3008
+
+  # ── IaC scanning ────────────────────────────────────────────────────────────
+  - repo: https://github.com/bridgecrewio/checkov
+    rev: 3.2.0
+    hooks:
+      - id: checkov
+        name: "Scan K8s manifests (Checkov)"
+        args:
+          - --directory=k8s/
+          - --framework=kubernetes
+          - --hard-fail-on=HIGH,CRITICAL

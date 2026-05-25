@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: python-app-sa
+  namespace: microservices
+  labels:
+    app: python-app
+# Reason for false: these microservices have no need to call the Kubernetes API.
+# Auto-mounting the default token gives every pod a valid cluster credential by
+# default — an unnecessary attack surface if the pod is compromised.
+automountServiceAccountToken: false

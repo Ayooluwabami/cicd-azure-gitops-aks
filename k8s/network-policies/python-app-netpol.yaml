@@ -1,0 +1,23 @@
+# Allow external traffic to reach python-app on port 5000.
+# The source is intentionally unrestricted (all namespaces / all IPs) because
+# traffic arrives from the Azure LoadBalancer which performs SNAT — the
+# original client IP is not preserved at the pod level in standard AKS
+# without externalTrafficPolicy: Local.
+#
+# Egress is blocked (default-deny applies). python-app has no downstream
+# service dependencies and should not initiate outbound connections.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: python-app-ingress
+  namespace: microservices
+spec:
+  podSelector:
+    matchLabels:
+      app: python-app
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 5000
+          protocol: TCP

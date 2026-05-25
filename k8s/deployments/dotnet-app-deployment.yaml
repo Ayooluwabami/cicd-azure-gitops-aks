@@ -5,6 +5,7 @@ metadata:
   namespace: microservices
   labels:
     app: dotnet-app
+    version: "1.0.0"
 spec:
   replicas: 2
   selector:
@@ -15,9 +16,21 @@ spec:
       labels:
         app: dotnet-app
     spec:
+      serviceAccountName: dotnet-app-sa
+      automountServiceAccountToken: false
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+
       containers:
         - name: dotnet-app
-          image: acrgitopsproject.azurecr.io/dotnet-app:latest
+          image: acrgitopsproject.azurecr.io/dotnet-app:1.0.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
@@ -25,6 +38,10 @@ spec:
               value: "1.0.0"
             - name: ASPNETCORE_URLS
               value: "http://+:8080"
+            # Disable ASP.NET Core HTTPS redirection — TLS terminates at
+            # the LoadBalancer; internal traffic is HTTP inside the cluster.
+            - name: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+              value: "true"
           resources:
             requests:
               memory: "128Mi"
@@ -32,15 +49,33 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            # ASP.NET Core and dotnet runtime write to /tmp.
+            - name: tmp-dir
+              mountPath: /tmp
+
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
             initialDelaySeconds: 20
             periodSeconds: 20
+            failureThreshold: 3
+
+      volumes:
+        - name: tmp-dir
+          emptyDir: {}

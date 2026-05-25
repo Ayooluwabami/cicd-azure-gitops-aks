@@ -5,6 +5,7 @@ metadata:
   namespace: microservices
   labels:
     app: nodejs-app
+    version: "1.0.0"
 spec:
   replicas: 2
   selector:
@@ -15,9 +16,21 @@ spec:
       labels:
         app: nodejs-app
     spec:
+      serviceAccountName: nodejs-app-sa
+      automountServiceAccountToken: false
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000   # matches the 'node' user baked into node:20-alpine
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
       containers:
         - name: nodejs-app
-          image: acrgitopsproject.azurecr.io/nodejs-app:latest
+          image: acrgitopsproject.azurecr.io/nodejs-app:1.0.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           env:
@@ -30,15 +43,32 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "250m"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp-dir
+              mountPath: /tmp
+
           readinessProbe:
             httpGet:
               path: /health
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 3000
             initialDelaySeconds: 15
             periodSeconds: 20
+            failureThreshold: 3
+
+      volumes:
+        - name: tmp-dir
+          emptyDir: {}

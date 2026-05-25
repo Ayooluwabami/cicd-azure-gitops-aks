@@ -5,110 +5,287 @@ trigger:
   paths:
     include:
       - microservices/**
+      - k8s/**
+      - azure-pipelines/**
 
 variables:
   ACR_NAME: "acrgitopsproject"
   ACR_LOGIN_SERVER: "$(ACR_NAME).azurecr.io"
+  # IMAGE_TAG uses the pipeline run ID — immutable, traceable, never 'latest'.
+  # Reason: mutable tags (latest, stable) defeat ArgoCD drift detection and
+  # make rollbacks ambiguous. Build ID ties every running container to an
+  # auditable pipeline execution.
   IMAGE_TAG: "$(Build.BuildId)"
 
 stages:
-  # ──────────────────────────────────────────────
-  # Stage 1: Build & Push Python App
-  # ──────────────────────────────────────────────
+
+  # ============================================================
+  # GATE 1 — Secret Scanning
+  # Must pass before any build stage starts.
+  # Reason: secrets committed to source are the single most common
+  # cause of credential compromise. We fail here, not at code review.
+  # ============================================================
+  - stage: SecretScan
+    displayName: "Gate 1 — Secret Scanning (Gitleaks)"
+    jobs:
+      - job: Gitleaks
+        displayName: "Scan for committed secrets"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            fetchDepth: 0   # full history — Gitleaks scans all commits, not just HEAD
+
+          - script: |
+              docker run --rm \
+                -v "$(Build.SourcesDirectory):/repo" \
+                ghcr.io/gitleaks/gitleaks:v8.18.4 \
+                detect \
+                  --source /repo \
+                  --redact \
+                  --exit-code 1 \
+                  --report-format sarif \
+                  --report-path /repo/gitleaks-report.sarif
+            displayName: "Run Gitleaks — block on any finding"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: "$(Build.SourcesDirectory)/gitleaks-report.sarif"
+              artifactName: "secret-scan-results"
+
+  # ============================================================
+  # GATE 2 — Infrastructure-as-Code Scanning (Checkov)
+  # Scans k8s manifests and pipeline YAML for misconfigurations.
+  # Runs in parallel with SAST — both depend only on Gate 1.
+  # ============================================================
+  - stage: IaCScan
+    displayName: "Gate 2 — IaC Scanning (Checkov)"
+    dependsOn: SecretScan
+    jobs:
+      - job: Checkov
+        displayName: "Scan K8s manifests"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - script: |
+              pip install checkov==3.2.0 --quiet
+            displayName: "Install Checkov (pinned version)"
+
+          - script: |
+              checkov \
+                --directory k8s/ \
+                --framework kubernetes \
+                --output cli \
+                --output sarif \
+                --output-file-path . \
+                --hard-fail-on HIGH,CRITICAL \
+                --soft-fail-on MEDIUM,LOW
+            displayName: "Scan k8s/ — block on HIGH/CRITICAL misconfigs"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: "$(Build.SourcesDirectory)/results_kubernetes.sarif"
+              artifactName: "iac-scan-results"
+
+  # ============================================================
+  # GATE 3 — Static Application Security Testing (Semgrep)
+  # Scans application source code for insecure patterns.
+  # Runs in parallel with IaC scan.
+  # ============================================================
+  - stage: SAST
+    displayName: "Gate 3 — SAST (Semgrep)"
+    dependsOn: SecretScan
+    jobs:
+      - job: Semgrep
+        displayName: "Scan microservice source code"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - script: |
+              pip install semgrep==1.72.0 --quiet
+            displayName: "Install Semgrep (pinned version)"
+
+          - script: |
+              semgrep \
+                --config=auto \
+                microservices/ \
+                --error \
+                --severity ERROR \
+                --sarif \
+                --output semgrep-results.sarif
+            displayName: "Run Semgrep — block on ERROR severity findings"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: "$(Build.SourcesDirectory)/semgrep-results.sarif"
+              artifactName: "sast-results"
+
+  # ============================================================
+  # BUILD + TRIVY SCAN + PUSH — Python App
+  # All three security gates must pass before any image is built.
+  # Trivy scans the local image before it is pushed to ACR —
+  # a vulnerable image never touches the registry.
+  # ============================================================
   - stage: Build_Python
-    displayName: "Build & Push Python App"
+    displayName: "Build · Scan · Push — python-app"
+    dependsOn:
+      - SecretScan
+      - IaCScan
+      - SAST
     jobs:
-      - job: BuildPython
-        displayName: "Docker Build - python-app"
+      - job: BuildScanPushPython
+        displayName: "python-app"
         pool:
           vmImage: "ubuntu-latest"
         steps:
-          - task: Docker@2
-            displayName: "Build Python image"
-            inputs:
-              command: build
-              repository: "$(ACR_LOGIN_SERVER)/python-app"
-              dockerfile: "microservices/python-app/Dockerfile"
-              buildContext: "microservices/python-app"
-              tags: |
-                $(IMAGE_TAG)
-                latest
-
           - task: AzureCLI@2
-            displayName: "Push Python image to ACR"
+            displayName: "ACR login via Service Principal"
             inputs:
               azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 az acr login --name $(ACR_NAME)
-                docker push $(ACR_LOGIN_SERVER)/python-app:$(IMAGE_TAG)
-                docker push $(ACR_LOGIN_SERVER)/python-app:latest
 
-  # ──────────────────────────────────────────────
-  # Stage 2: Build & Push Node.js App
-  # ──────────────────────────────────────────────
+          - script: |
+              docker build \
+                -t python-app:$(IMAGE_TAG) \
+                microservices/python-app/
+            displayName: "Build Docker image (local)"
+
+          - script: |
+              docker run --rm \
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                aquasec/trivy:0.50.4 image \
+                  --exit-code 1 \
+                  --severity CRITICAL,HIGH \
+                  --ignore-unfixed \
+                  --format sarif \
+                  --output trivy-python.sarif \
+                  python-app:$(IMAGE_TAG)
+            displayName: "Trivy scan — block on CRITICAL/HIGH CVEs"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: "$(Build.SourcesDirectory)/trivy-python.sarif"
+              artifactName: "trivy-python-results"
+
+          - script: |
+              # Push only the immutable build-ID tag. Never push :latest to ACR.
+              # Reason: :latest is mutable and can be overwritten by any pipeline
+              # run, making it impossible to know what is actually running.
+              docker tag python-app:$(IMAGE_TAG) $(ACR_LOGIN_SERVER)/python-app:$(IMAGE_TAG)
+              docker push $(ACR_LOGIN_SERVER)/python-app:$(IMAGE_TAG)
+              echo "##vso[task.setvariable variable=PYTHON_IMAGE_DIGEST;isOutput=true]$(docker inspect --format='{{index .RepoDigests 0}}' $(ACR_LOGIN_SERVER)/python-app:$(IMAGE_TAG))"
+            displayName: "Push image to ACR (build-ID tag only)"
+            name: PushPython
+
+  # ============================================================
+  # BUILD + TRIVY SCAN + PUSH — Node.js App
+  # ============================================================
   - stage: Build_NodeJS
-    displayName: "Build & Push Node.js App"
-    dependsOn: []
+    displayName: "Build · Scan · Push — nodejs-app"
+    dependsOn:
+      - SecretScan
+      - IaCScan
+      - SAST
     jobs:
-      - job: BuildNodeJS
-        displayName: "Docker Build - nodejs-app"
+      - job: BuildScanPushNodeJS
+        displayName: "nodejs-app"
         pool:
           vmImage: "ubuntu-latest"
         steps:
-          - task: Docker@2
-            displayName: "Build Node.js image"
-            inputs:
-              command: build
-              repository: "$(ACR_LOGIN_SERVER)/nodejs-app"
-              dockerfile: "microservices/nodejs-app/Dockerfile"
-              buildContext: "microservices/nodejs-app"
-              tags: |
-                $(IMAGE_TAG)
-                latest
-
           - task: AzureCLI@2
-            displayName: "Push Node.js image to ACR"
+            displayName: "ACR login via Service Principal"
             inputs:
               azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 az acr login --name $(ACR_NAME)
-                docker push $(ACR_LOGIN_SERVER)/nodejs-app:$(IMAGE_TAG)
-                docker push $(ACR_LOGIN_SERVER)/nodejs-app:latest
 
-  # ──────────────────────────────────────────────
-  # Stage 3: Build & Push .NET App
-  # ──────────────────────────────────────────────
+          - script: |
+              docker build \
+                -t nodejs-app:$(IMAGE_TAG) \
+                microservices/nodejs-app/
+            displayName: "Build Docker image (local)"
+
+          - script: |
+              docker run --rm \
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                aquasec/trivy:0.50.4 image \
+                  --exit-code 1 \
+                  --severity CRITICAL,HIGH \
+                  --ignore-unfixed \
+                  --format sarif \
+                  --output trivy-nodejs.sarif \
+                  nodejs-app:$(IMAGE_TAG)
+            displayName: "Trivy scan — block on CRITICAL/HIGH CVEs"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: "$(Build.SourcesDirectory)/trivy-nodejs.sarif"
+              artifactName: "trivy-nodejs-results"
+
+          - script: |
+              docker tag nodejs-app:$(IMAGE_TAG) $(ACR_LOGIN_SERVER)/nodejs-app:$(IMAGE_TAG)
+              docker push $(ACR_LOGIN_SERVER)/nodejs-app:$(IMAGE_TAG)
+            displayName: "Push image to ACR (build-ID tag only)"
+
+  # ============================================================
+  # BUILD + TRIVY SCAN + PUSH — .NET App
+  # ============================================================
   - stage: Build_DotNet
-    displayName: "Build & Push .NET App"
-    dependsOn: []
+    displayName: "Build · Scan · Push — dotnet-app"
+    dependsOn:
+      - SecretScan
+      - IaCScan
+      - SAST
     jobs:
-      - job: BuildDotNet
-        displayName: "Docker Build - dotnet-app"
+      - job: BuildScanPushDotNet
+        displayName: "dotnet-app"
         pool:
           vmImage: "ubuntu-latest"
         steps:
-          - task: Docker@2
-            displayName: "Build .NET image"
-            inputs:
-              command: build
-              repository: "$(ACR_LOGIN_SERVER)/dotnet-app"
-              dockerfile: "microservices/dotnet-app/Dockerfile"
-              buildContext: "microservices/dotnet-app"
-              tags: |
-                $(IMAGE_TAG)
-                latest
-
           - task: AzureCLI@2
-            displayName: "Push .NET image to ACR"
+            displayName: "ACR login via Service Principal"
             inputs:
               azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 az acr login --name $(ACR_NAME)
-                docker push $(ACR_LOGIN_SERVER)/dotnet-app:$(IMAGE_TAG)
-                docker push $(ACR_LOGIN_SERVER)/dotnet-app:latest
+
+          - script: |
+              docker build \
+                -t dotnet-app:$(IMAGE_TAG) \
+                microservices/dotnet-app/
+            displayName: "Build Docker image (local)"
+
+          - script: |
+              docker run --rm \
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                aquasec/trivy:0.50.4 image \
+                  --exit-code 1 \
+                  --severity CRITICAL,HIGH \
+                  --ignore-unfixed \
+                  --format sarif \
+                  --output trivy-dotnet.sarif \
+                  dotnet-app:$(IMAGE_TAG)
+            displayName: "Trivy scan — block on CRITICAL/HIGH CVEs"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: "$(Build.SourcesDirectory)/trivy-dotnet.sarif"
+              artifactName: "trivy-dotnet-results"
+
+          - script: |
+              docker tag dotnet-app:$(IMAGE_TAG) $(ACR_LOGIN_SERVER)/dotnet-app:$(IMAGE_TAG)
+              docker push $(ACR_LOGIN_SERVER)/dotnet-app:$(IMAGE_TAG)
+            displayName: "Push image to ACR (build-ID tag only)"

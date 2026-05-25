@@ -1,0 +1,18 @@
+# Default-deny for the entire microservices namespace.
+#
+# Why: Kubernetes allows all pod-to-pod traffic by default. Without this,
+# a compromised python-app pod can reach the nodejs-app pod, the dotnet-app
+# pod, and the K8s API server — none of which it has a legitimate reason to.
+#
+# This policy sets the secure baseline. All permitted traffic is explicitly
+# re-opened by the per-service policies below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: microservices
+spec:
+  podSelector: {}     # matches every pod in the namespace
+  policyTypes:
+    - Ingress
+    - Egress

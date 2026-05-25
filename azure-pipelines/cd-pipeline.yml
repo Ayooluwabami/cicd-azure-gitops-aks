@@ -12,27 +12,79 @@ resources:
 variables:
   ACR_LOGIN_SERVER: "acrgitopsproject.azurecr.io"
   IMAGE_TAG: "$(resources.pipeline.CIPipeline.runID)"
-  GIT_USER_EMAIL: "devops@cicd-gitops.com"
-  GIT_USER_NAME: "Azure DevOps Bot"
+  GIT_USER_EMAIL: "devops-bot@cicd-gitops.com"
+  GIT_USER_NAME: "Azure DevOps Bot [bot]"
+  # Key Vault name — the actual secret VALUES are fetched at runtime below,
+  # never stored in pipeline variables or logs.
+  KEY_VAULT_NAME: "kv-gitops-project"
 
 stages:
+  # ============================================================
+  # STAGE 1 — Fetch secrets from Azure Key Vault
+  # Why Key Vault instead of pipeline variables:
+  #   1. Secrets are never stored in Azure DevOps UI where any project
+  #      admin can view them.
+  #   2. Access is controlled by Azure RBAC — auditable, rotatable
+  #      without touching the pipeline definition.
+  #   3. Secret access is logged in Azure Monitor; anomalous access
+  #      outside pipeline hours triggers an alert.
+  # ============================================================
+  - stage: FetchSecrets
+    displayName: "Fetch Runtime Secrets from Key Vault"
+    jobs:
+      - job: FetchFromKeyVault
+        displayName: "Load secrets via Managed Identity"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: AzureKeyVault@2
+            displayName: "Fetch secrets — argocd-admin-password, github-pat"
+            inputs:
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              KeyVaultName: "$(KEY_VAULT_NAME)"
+              # Only fetch the secrets this pipeline actually needs.
+              # Least-privilege: do not fetch every secret in the vault.
+              SecretsFilter: "argocd-admin-password,github-pat"
+              RunAsPreJob: true
+
+  # ============================================================
+  # STAGE 2 — Update Kubernetes manifests with new image tags
+  # The CD pipeline commits updated image tags to Git.
+  # ArgoCD then detects the diff and applies it to the cluster
+  # (GitOps pull model — the cluster is never pushed to directly).
+  # ============================================================
   - stage: UpdateManifests
     displayName: "Update K8s Manifests"
+    dependsOn: FetchSecrets
     jobs:
       - job: UpdateK8sManifests
-        displayName: "Update deployment image tags"
+        displayName: "Patch image tags in deployment manifests"
         pool:
           vmImage: "ubuntu-latest"
         steps:
           - checkout: self
             persistCredentials: true
 
+          - task: AzureKeyVault@2
+            displayName: "Re-fetch Key Vault secrets in this job"
+            inputs:
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              KeyVaultName: "$(KEY_VAULT_NAME)"
+              SecretsFilter: "github-pat"
+              RunAsPreJob: false
+
           - script: |
               git config user.email "$(GIT_USER_EMAIL)"
               git config user.name "$(GIT_USER_NAME)"
-            displayName: "Configure Git"
+              # Use PAT from Key Vault for authenticated push.
+              git remote set-url origin \
+                https://x-access-token:$(github-pat)@github.com/Ayooluwabami/cicd-azure-gitops-aks.git
+            displayName: "Configure Git with Key Vault PAT"
 
           - script: |
+              # Replace the image tag in all three deployment manifests.
+              # The sed pattern matches any existing tag (not just 'latest')
+              # so re-running the pipeline always produces a clean diff.
               sed -i "s|$(ACR_LOGIN_SERVER)/python-app:.*|$(ACR_LOGIN_SERVER)/python-app:$(IMAGE_TAG)|g" \
                 k8s/deployments/python-app-deployment.yaml
 
@@ -41,38 +93,79 @@ stages:
 
               sed -i "s|$(ACR_LOGIN_SERVER)/dotnet-app:.*|$(ACR_LOGIN_SERVER)/dotnet-app:$(IMAGE_TAG)|g" \
                 k8s/deployments/dotnet-app-deployment.yaml
-            displayName: "Update image tags in manifests"
+
+              echo "Updated manifests:"
+              grep "image:" k8s/deployments/*.yaml
+            displayName: "Patch image tags → build $(IMAGE_TAG)"
 
           - script: |
               git add k8s/deployments/
-              git commit -m "ci: update image tags to build $(IMAGE_TAG) [skip ci]"
+              # [skip ci] prevents this commit from re-triggering the CI pipeline.
+              git commit -m "ci(cd): update image tags to build $(IMAGE_TAG) [skip ci]
+
+              Pipeline run: $(Build.BuildId)
+              Triggered by: $(Build.RequestedFor)
+              Branch: $(Build.SourceBranchName)"
               git push origin main
             displayName: "Commit and push manifest changes"
 
+  # ============================================================
+  # STAGE 3 — Trigger ArgoCD sync and wait for health
+  # ArgoCD would auto-sync on the Git change above (typically within
+  # 3 minutes). We trigger an immediate sync and wait for health
+  # so the pipeline provides a real deployment status — not just
+  # "we pushed to Git and hope for the best."
+  # ============================================================
   - stage: SyncArgoCD
-    displayName: "Trigger ArgoCD Sync"
+    displayName: "ArgoCD Sync + Health Gate"
     dependsOn: UpdateManifests
     jobs:
       - job: ArgoCDSync
-        displayName: "Sync ArgoCD Application"
+        displayName: "Sync application and verify health"
         pool:
           vmImage: "ubuntu-latest"
         steps:
-          - script: |
-              curl -sSL -o /usr/local/bin/argocd \
-                https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-              chmod +x /usr/local/bin/argocd
-            displayName: "Install ArgoCD CLI"
+          - task: AzureKeyVault@2
+            displayName: "Fetch ArgoCD password from Key Vault"
+            inputs:
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              KeyVaultName: "$(KEY_VAULT_NAME)"
+              SecretsFilter: "argocd-admin-password"
+              RunAsPreJob: false
 
           - script: |
+              # Pin ArgoCD CLI to a specific version — not 'latest'.
+              # Reason: an unpinned CLI download is a supply-chain vector;
+              # a tag pointing to a different binary tomorrow breaks reproducibility.
+              ARGOCD_VERSION="v2.10.3"
+              curl -sSL -o /usr/local/bin/argocd \
+                "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64"
+              chmod +x /usr/local/bin/argocd
+              argocd version --client
+            displayName: "Install ArgoCD CLI (pinned version)"
+
+          - script: |
+              # --grpc-web: use HTTP/1.1 grpc-web transport.
+              # Preferred over --insecure because it does not skip TLS
+              # certificate validation — it adapts the transport protocol.
               argocd login $(ARGOCD_SERVER) \
                 --username admin \
-                --password $(ARGOCD_PASSWORD) \
-                --insecure
+                --password $(argocd-admin-password) \
+                --grpc-web
 
-              argocd app sync microservices-app --force
-              argocd app wait microservices-app --health --timeout 120
-            displayName: "Sync and wait for ArgoCD"
+              argocd app sync microservices-app --force --prune
+              # Wait up to 3 minutes for the application to become healthy.
+              # Pipeline fails if any pod does not reach Running state.
+              argocd app wait microservices-app \
+                --health \
+                --timeout 180
+            displayName: "Sync ArgoCD app and wait for healthy status"
             env:
               ARGOCD_SERVER: $(ARGOCD_SERVER)
-              ARGOCD_PASSWORD: $(ARGOCD_PASSWORD)
+              # argocd-admin-password is injected by the Key Vault task above;
+              # it is masked in logs automatically by Azure DevOps.
+
+          - script: |
+              echo "=== Deployment summary ==="
+              argocd app get microservices-app
+            displayName: "Print deployment status"

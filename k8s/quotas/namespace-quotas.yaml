@@ -1,0 +1,51 @@
+# ResourceQuota: hard ceiling on what the microservices namespace can consume.
+# Purpose: prevents a misbehaving or compromised workload from exhausting
+# the shared node pool and starving other namespaces (noisy-neighbour / DoS).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: microservices-quota
+  namespace: microservices
+spec:
+  hard:
+    requests.cpu: "1500m"      # 3 services × 2 replicas × 100m request + headroom
+    requests.memory: "768Mi"   # 3 services × 2 replicas × 64Mi + headroom
+    limits.cpu: "3"            # 3 services × 2 replicas × 250–500m limit
+    limits.memory: "1536Mi"    # 3 services × 2 replicas × 128–256Mi limit
+    count/pods: "20"           # hard cap: prevents runaway HPA or loop
+    count/services: "10"
+    count/deployments.apps: "10"
+    count/secrets: "20"        # limits secret sprawl
+    count/configmaps: "20"
+
+---
+# LimitRange: per-container defaults and bounds.
+# Purpose: any container spec that omits requests/limits still gets sensible
+# defaults and cannot request unbounded resources.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: microservices-limits
+  namespace: microservices
+spec:
+  limits:
+    - type: Container
+      # Applied when a container spec omits requests/limits entirely
+      default:
+        cpu: "250m"
+        memory: "128Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "64Mi"
+      # Hard upper bound — a single container cannot exceed these
+      max:
+        cpu: "500m"
+        memory: "512Mi"
+      # Hard lower bound — prevents resource starvation via near-zero requests
+      min:
+        cpu: "50m"
+        memory: "32Mi"
+    - type: Pod
+      max:
+        cpu: "1"
+        memory: "1Gi"
