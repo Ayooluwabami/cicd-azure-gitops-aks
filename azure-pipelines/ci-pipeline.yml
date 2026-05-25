@@ -1,0 +1,114 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - microservices/**
+
+variables:
+  ACR_NAME: "acrgitopsproject"
+  ACR_LOGIN_SERVER: "$(ACR_NAME).azurecr.io"
+  IMAGE_TAG: "$(Build.BuildId)"
+
+stages:
+  # ──────────────────────────────────────────────
+  # Stage 1: Build & Push Python App
+  # ──────────────────────────────────────────────
+  - stage: Build_Python
+    displayName: "Build & Push Python App"
+    jobs:
+      - job: BuildPython
+        displayName: "Docker Build - python-app"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: Docker@2
+            displayName: "Build Python image"
+            inputs:
+              command: build
+              repository: "$(ACR_LOGIN_SERVER)/python-app"
+              dockerfile: "microservices/python-app/Dockerfile"
+              buildContext: "microservices/python-app"
+              tags: |
+                $(IMAGE_TAG)
+                latest
+
+          - task: AzureCLI@2
+            displayName: "Push Python image to ACR"
+            inputs:
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr login --name $(ACR_NAME)
+                docker push $(ACR_LOGIN_SERVER)/python-app:$(IMAGE_TAG)
+                docker push $(ACR_LOGIN_SERVER)/python-app:latest
+
+  # ──────────────────────────────────────────────
+  # Stage 2: Build & Push Node.js App
+  # ──────────────────────────────────────────────
+  - stage: Build_NodeJS
+    displayName: "Build & Push Node.js App"
+    dependsOn: []
+    jobs:
+      - job: BuildNodeJS
+        displayName: "Docker Build - nodejs-app"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: Docker@2
+            displayName: "Build Node.js image"
+            inputs:
+              command: build
+              repository: "$(ACR_LOGIN_SERVER)/nodejs-app"
+              dockerfile: "microservices/nodejs-app/Dockerfile"
+              buildContext: "microservices/nodejs-app"
+              tags: |
+                $(IMAGE_TAG)
+                latest
+
+          - task: AzureCLI@2
+            displayName: "Push Node.js image to ACR"
+            inputs:
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr login --name $(ACR_NAME)
+                docker push $(ACR_LOGIN_SERVER)/nodejs-app:$(IMAGE_TAG)
+                docker push $(ACR_LOGIN_SERVER)/nodejs-app:latest
+
+  # ──────────────────────────────────────────────
+  # Stage 3: Build & Push .NET App
+  # ──────────────────────────────────────────────
+  - stage: Build_DotNet
+    displayName: "Build & Push .NET App"
+    dependsOn: []
+    jobs:
+      - job: BuildDotNet
+        displayName: "Docker Build - dotnet-app"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: Docker@2
+            displayName: "Build .NET image"
+            inputs:
+              command: build
+              repository: "$(ACR_LOGIN_SERVER)/dotnet-app"
+              dockerfile: "microservices/dotnet-app/Dockerfile"
+              buildContext: "microservices/dotnet-app"
+              tags: |
+                $(IMAGE_TAG)
+                latest
+
+          - task: AzureCLI@2
+            displayName: "Push .NET image to ACR"
+            inputs:
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr login --name $(ACR_NAME)
+                docker push $(ACR_LOGIN_SERVER)/dotnet-app:$(IMAGE_TAG)
+                docker push $(ACR_LOGIN_SERVER)/dotnet-app:latest

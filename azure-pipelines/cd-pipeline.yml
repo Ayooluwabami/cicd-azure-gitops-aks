@@ -1,0 +1,78 @@
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: CIPipeline
+      source: "CI-Pipeline"
+      trigger:
+        branches:
+          include:
+            - main
+
+variables:
+  ACR_LOGIN_SERVER: "acrgitopsproject.azurecr.io"
+  IMAGE_TAG: "$(resources.pipeline.CIPipeline.runID)"
+  GIT_USER_EMAIL: "devops@cicd-gitops.com"
+  GIT_USER_NAME: "Azure DevOps Bot"
+
+stages:
+  - stage: UpdateManifests
+    displayName: "Update K8s Manifests"
+    jobs:
+      - job: UpdateK8sManifests
+        displayName: "Update deployment image tags"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            persistCredentials: true
+
+          - script: |
+              git config user.email "$(GIT_USER_EMAIL)"
+              git config user.name "$(GIT_USER_NAME)"
+            displayName: "Configure Git"
+
+          - script: |
+              sed -i "s|$(ACR_LOGIN_SERVER)/python-app:.*|$(ACR_LOGIN_SERVER)/python-app:$(IMAGE_TAG)|g" \
+                k8s/deployments/python-app-deployment.yaml
+
+              sed -i "s|$(ACR_LOGIN_SERVER)/nodejs-app:.*|$(ACR_LOGIN_SERVER)/nodejs-app:$(IMAGE_TAG)|g" \
+                k8s/deployments/nodejs-app-deployment.yaml
+
+              sed -i "s|$(ACR_LOGIN_SERVER)/dotnet-app:.*|$(ACR_LOGIN_SERVER)/dotnet-app:$(IMAGE_TAG)|g" \
+                k8s/deployments/dotnet-app-deployment.yaml
+            displayName: "Update image tags in manifests"
+
+          - script: |
+              git add k8s/deployments/
+              git commit -m "ci: update image tags to build $(IMAGE_TAG) [skip ci]"
+              git push origin main
+            displayName: "Commit and push manifest changes"
+
+  - stage: SyncArgoCD
+    displayName: "Trigger ArgoCD Sync"
+    dependsOn: UpdateManifests
+    jobs:
+      - job: ArgoCDSync
+        displayName: "Sync ArgoCD Application"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - script: |
+              curl -sSL -o /usr/local/bin/argocd \
+                https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+              chmod +x /usr/local/bin/argocd
+            displayName: "Install ArgoCD CLI"
+
+          - script: |
+              argocd login $(ARGOCD_SERVER) \
+                --username admin \
+                --password $(ARGOCD_PASSWORD) \
+                --insecure
+
+              argocd app sync microservices-app --force
+              argocd app wait microservices-app --health --timeout 120
+            displayName: "Sync and wait for ArgoCD"
+            env:
+              ARGOCD_SERVER: $(ARGOCD_SERVER)
+              ARGOCD_PASSWORD: $(ARGOCD_PASSWORD)
