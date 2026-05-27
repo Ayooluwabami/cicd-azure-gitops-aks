@@ -189,8 +189,8 @@ stages:
           - task: Cache@2
             displayName: "Cache Trivy vulnerability DB"
             inputs:
-              key: '"trivy-db" | "0.50.4" | $(date +%Y-%W)'
-              path: $(HOME)/.cache/trivy
+              key: '"trivy-db" | "0.50.4"'
+              path: $(Pipeline.Workspace)/.trivy-cache
 
           - script: |
               TRIVY_VERSION="0.50.4"
@@ -210,7 +210,7 @@ stages:
                   --ignore-unfixed \
                   --format sarif \
                   --output "$(Build.SourcesDirectory)/trivy-python.sarif" \
-                  --cache-dir $(HOME)/.cache/trivy \
+                  --cache-dir $(Pipeline.Workspace)/.trivy-cache \
                   python-app:$(IMAGE_TAG) || true
               else
                 echo "Trivy not available — CVE scan skipped"
@@ -262,8 +262,8 @@ stages:
           - task: Cache@2
             displayName: "Cache Trivy vulnerability DB"
             inputs:
-              key: '"trivy-db" | "0.50.4" | $(date +%Y-%W)'
-              path: $(HOME)/.cache/trivy
+              key: '"trivy-db" | "0.50.4"'
+              path: $(Pipeline.Workspace)/.trivy-cache
 
           - script: |
               TRIVY_VERSION="0.50.4"
@@ -283,7 +283,7 @@ stages:
                   --ignore-unfixed \
                   --format sarif \
                   --output "$(Build.SourcesDirectory)/trivy-nodejs.sarif" \
-                  --cache-dir $(HOME)/.cache/trivy \
+                  --cache-dir $(Pipeline.Workspace)/.trivy-cache \
                   nodejs-app:$(IMAGE_TAG) || true
               else
                 echo "Trivy not available — CVE scan skipped"
@@ -335,8 +335,8 @@ stages:
           - task: Cache@2
             displayName: "Cache Trivy vulnerability DB"
             inputs:
-              key: '"trivy-db" | "0.50.4" | $(date +%Y-%W)'
-              path: $(HOME)/.cache/trivy
+              key: '"trivy-db" | "0.50.4"'
+              path: $(Pipeline.Workspace)/.trivy-cache
 
           - script: |
               TRIVY_VERSION="0.50.4"
@@ -356,7 +356,7 @@ stages:
                   --ignore-unfixed \
                   --format sarif \
                   --output "$(Build.SourcesDirectory)/trivy-dotnet.sarif" \
-                  --cache-dir $(HOME)/.cache/trivy \
+                  --cache-dir $(Pipeline.Workspace)/.trivy-cache \
                   dotnet-app:$(IMAGE_TAG) || true
               else
                 echo "Trivy not available — CVE scan skipped"
