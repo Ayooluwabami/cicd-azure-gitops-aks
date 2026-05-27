@@ -152,15 +152,15 @@ stages:
               RunAsPreJob: false
 
           - script: |
-              # Pin ArgoCD CLI to a specific version — not 'latest'.
-              # Reason: an unpinned CLI download is a supply-chain vector;
-              # a tag pointing to a different binary tomorrow breaks reproducibility.
-              ARGOCD_VERSION="v2.10.3"
+              # Pin ArgoCD CLI to match the server version (v3.4.2).
+              # Reason: v2.x CLI against a v3.x server can produce API
+              # incompatibilities; matching versions avoids silent failures.
+              ARGOCD_VERSION="v3.4.2"
               curl -sSL -o /usr/local/bin/argocd \
                 "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64"
               chmod +x /usr/local/bin/argocd
               argocd version --client
-            displayName: "Install ArgoCD CLI (pinned version)"
+            displayName: "Install ArgoCD CLI (pinned v3.4.2)"
 
           - script: |
               # --grpc-web: use HTTP/1.1 grpc-web transport.
