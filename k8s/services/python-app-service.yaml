@@ -6,7 +6,7 @@ metadata:
   labels:
     app: python-app
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: python-app
   ports:

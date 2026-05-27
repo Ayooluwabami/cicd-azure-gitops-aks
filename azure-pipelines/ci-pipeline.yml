@@ -205,12 +205,12 @@ stages:
               touch "$(Build.SourcesDirectory)/trivy-python.sarif"
               if command -v trivy >/dev/null 2>&1; then
                 trivy image \
-                  --exit-code 0 \
+                  --exit-code 1 \
                   --severity CRITICAL,HIGH \
                   --ignore-unfixed \
                   --format sarif \
                   --output "$(Build.SourcesDirectory)/trivy-python.sarif" \
-                  python-app:$(IMAGE_TAG) || true
+                  python-app:$(IMAGE_TAG)
               else
                 echo "Trivy not available — CVE scan skipped"
               fi
@@ -276,12 +276,12 @@ stages:
               touch "$(Build.SourcesDirectory)/trivy-nodejs.sarif"
               if command -v trivy >/dev/null 2>&1; then
                 trivy image \
-                  --exit-code 0 \
+                  --exit-code 1 \
                   --severity CRITICAL,HIGH \
                   --ignore-unfixed \
                   --format sarif \
                   --output "$(Build.SourcesDirectory)/trivy-nodejs.sarif" \
-                  nodejs-app:$(IMAGE_TAG) || true
+                  nodejs-app:$(IMAGE_TAG)
               else
                 echo "Trivy not available — CVE scan skipped"
               fi
@@ -347,12 +347,12 @@ stages:
               touch "$(Build.SourcesDirectory)/trivy-dotnet.sarif"
               if command -v trivy >/dev/null 2>&1; then
                 trivy image \
-                  --exit-code 0 \
+                  --exit-code 1 \
                   --severity CRITICAL,HIGH \
                   --ignore-unfixed \
                   --format sarif \
                   --output "$(Build.SourcesDirectory)/trivy-dotnet.sarif" \
-                  dotnet-app:$(IMAGE_TAG) || true
+                  dotnet-app:$(IMAGE_TAG)
               else
                 echo "Trivy not available — CVE scan skipped"
               fi

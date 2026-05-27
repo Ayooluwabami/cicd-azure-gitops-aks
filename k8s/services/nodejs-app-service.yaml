@@ -6,7 +6,7 @@ metadata:
   labels:
     app: nodejs-app
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: nodejs-app
   ports:
