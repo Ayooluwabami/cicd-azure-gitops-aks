@@ -34,7 +34,7 @@ spec:
 
       containers:
         - name: nodejs-app
-          image: acrgitopsproject.azurecr.io/nodejs-app:53
+          image: acrgitopsproject.azurecr.io/nodejs-app:57
           imagePullPolicy: Always
           ports:
             - containerPort: 3000

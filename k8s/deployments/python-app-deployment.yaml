@@ -43,7 +43,7 @@ spec:
         - name: python-app
           # Tag is updated by the CD pipeline on every successful CI build.
           # 'latest' is never used — it is mutable and defeats ArgoCD drift detection.
-          image: acrgitopsproject.azurecr.io/python-app:55
+          image: acrgitopsproject.azurecr.io/python-app:57
           # Override Dockerfile CMD to drop --tmp-dir (removed in gunicorn 22.0.0).
           # /tmp is mounted as emptyDir below so gunicorn uses it automatically.
           command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
