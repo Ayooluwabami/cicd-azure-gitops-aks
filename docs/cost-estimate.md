@@ -70,9 +70,8 @@ All Azure resources should be tagged with:
 ```
 environment   = dev
 managed-by    = terraform (or manual for this project)
-project       = cicd-gitops-group29
+project       = cicd-gitops
 cost-centre   = cloud-training
-team          = group29
 ```
 
 Without tags, Azure Cost Management cannot break down spend by project, making it impossible to attribute costs or set budget alerts.

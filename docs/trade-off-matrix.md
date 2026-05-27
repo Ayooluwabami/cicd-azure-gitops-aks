@@ -1,6 +1,6 @@
 # Architectural Trade-off Matrices
 
-**Project:** CI/CD Pipeline with Azure DevOps, GitOps, and AKS — Group 29
+**Project:** CI/CD Pipeline with Azure DevOps, GitOps, and AKS
 **Date:** 2026-05-25
 
 > Every significant architectural decision in this project was evaluated against

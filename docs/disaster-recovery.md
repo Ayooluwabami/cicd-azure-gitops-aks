@@ -1,9 +1,7 @@
 # Disaster Recovery Plan
 
-**System:** CI/CD Pipeline with Azure DevOps, GitOps, and AKS — Group 29
+**System:** CI/CD Pipeline with Azure DevOps, GitOps, and AKS
 **Last updated:** 2026-05-25
-**Last tested:** Not yet tested — must be verified before first demo
-**Owner:** Ayobami Edun (primary), Wisdom Chiemela Uwaga (secondary)
 
 ---
 
