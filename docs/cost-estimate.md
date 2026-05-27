@@ -1,7 +1,7 @@
 # Cost Estimate — CI/CD GitOps Project on Azure
 
 **Estimate date:** 2026-05-25
-**Region:** East US
+**Region:** UK South
 **Assumption:** Project-level demo usage only. No production SLA, no 24/7 uptime requirement.
 
 ---
@@ -10,15 +10,15 @@
 
 | Resource | SKU / Config | Unit Cost | Qty | Monthly Est. |
 |----------|-------------|-----------|-----|-------------|
-| AKS — System node pool | Standard_B2s (2 vCPU, 4GB) | $0.0416/hr | 3 nodes | ~$90 |
+| AKS — System node pool | Standard_D2ps_v6 (2 vCPU ARM64, 4GB) | ~$0.048/hr | 3 nodes | ~$104 |
 | AKS — Cluster management fee | Free tier (< 10 nodes) | $0 | 1 | $0 |
 | Azure Container Registry | Basic tier | $0.167/day | 1 | ~$5 |
 | Azure Key Vault | Standard (< 10k ops/month) | ~$0.03/10k ops | 1 | < $1 |
 | Azure Monitor / Log Analytics | 5 GB/day ingestion | $2.30/GB | 5 GB | ~$12 |
-| Public IP addresses | Standard LoadBalancer IPs | $0.005/hr ea. | 4 (3 svc + 1 ArgoCD) | ~$15 |
+| Public IP addresses | Standard LoadBalancer IPs | $0.005/hr ea. | 3 (Ingress + ArgoCD + Grafana) | ~$11 |
 | Azure DevOps | Free tier (5 users, 1800 CI min/mo) | $0 | 1 | $0 |
 | Bandwidth egress | First 100 GB free | $0 | — | $0 |
-| **TOTAL (always-on)** | | | | **~$123/month** |
+| **TOTAL (always-on)** | | | | **~$133/month** |
 
 ---
 
@@ -28,8 +28,8 @@ Stopping the AKS cluster outside working hours (8hrs/day, Mon–Fri = 40hrs/week
 
 | Scenario | Monthly Cost |
 |----------|-------------|
-| Always on | ~$123 |
-| Stopped nights + weekends (40hrs/week on) | ~$45 |
+| Always on | ~$133 |
+| Stopped nights + weekends (40hrs/week on) | ~$50 |
 | Stopped when not actively working (manual on/off) | ~$20–30 |
 
 **Recommendation for this project:** Use `scripts/non-prod-shutdown.sh` to manually stop and start the cluster. Do not leave it running while the group is not actively using it.
@@ -52,7 +52,7 @@ Stopping the AKS cluster outside working hours (8hrs/day, Mon–Fri = 40hrs/week
 
 | Dimension | AKS (Chosen) | Azure Container Apps | Azure App Service |
 |-----------|-------------|---------------------|-------------------|
-| Monthly cost (3 services) | ~$90 compute | ~$30–60 (serverless) | ~$30–60 (B1 tier) |
+| Monthly cost (3 services) | ~$104 compute | ~$30–60 (serverless) | ~$30–60 (B1 tier) |
 | GitOps support (ArgoCD) | Native | Not supported | Not supported |
 | Demonstrates K8s skills | Yes | No | No |
 | Operational complexity | High | Low | Low |

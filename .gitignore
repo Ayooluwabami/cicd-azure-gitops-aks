@@ -22,6 +22,9 @@ obj/
 .env
 *.env.local
 
+# Azure service connection export (contains subscription/tenant IDs)
+service-endpoint.json
+
 # IDE
 .vscode/
 .idea/
