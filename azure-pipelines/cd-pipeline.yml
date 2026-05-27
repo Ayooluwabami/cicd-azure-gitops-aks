@@ -202,7 +202,6 @@ stages:
   - stage: DAST
     displayName: "Gate 4 — DAST (OWASP ZAP)"
     dependsOn: SyncArgoCD
-    continueOnError: true
     jobs:
       - job: ZAPScan
         displayName: "Baseline scan — all three services via Ingress"
