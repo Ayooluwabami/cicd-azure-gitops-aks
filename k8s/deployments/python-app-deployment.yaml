@@ -38,7 +38,7 @@ spec:
         - name: python-app
           # Tag is updated by the CD pipeline on every successful CI build.
           # 'latest' is never used — it is mutable and defeats ArgoCD drift detection.
-          image: acrgitopsproject.azurecr.io/python-app:1.0.0
+          image: acrgitopsproject.azurecr.io/python-app:11
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
