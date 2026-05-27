@@ -3,7 +3,7 @@ trigger: none
 resources:
   pipelines:
     - pipeline: CIPipeline
-      source: "CI-Pipeline"
+      source: "cicd-azure-gitops-aks"   # must match the pipeline definition name in Azure DevOps
       trigger:
         branches:
           include:
@@ -17,6 +17,10 @@ variables:
   # Key Vault name — the actual secret VALUES are fetched at runtime below,
   # never stored in pipeline variables or logs.
   KEY_VAULT_NAME: "kv-gitops-project"
+  # ArgoCD external IP — override in Azure DevOps pipeline variables if IP changes.
+  ARGOCD_SERVER: "20.162.177.70"
+  # Service connection — must match the connection created in Project Settings.
+  AZURE_SERVICE_CONNECTION: "AZURE_SERVICE_CONNECTION"
 
 stages:
   # ============================================================

@@ -18,3 +18,11 @@ spec:
       kind: Deployment
     - group: ""
       kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: "networking.k8s.io"
+      kind: NetworkPolicy

@@ -9,6 +9,8 @@ spec:
     repoURL: https://github.com/Ayooluwabami/cicd-azure-gitops-aks.git
     targetRevision: main
     path: k8s
+    directory:
+      recurse: true     # scan k8s/deployments/, k8s/services/, k8s/rbac/ etc.
   destination:
     server: https://kubernetes.default.svc
     namespace: microservices
