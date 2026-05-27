@@ -39,7 +39,7 @@ stages:
       - job: FetchFromKeyVault
         displayName: "Load secrets via Managed Identity"
         pool:
-          name: "self-hosted-agents"
+          name: "Default"
         steps:
           - task: AzureKeyVault@2
             displayName: "Fetch secrets — argocd-admin-password, github-pat"
@@ -64,7 +64,7 @@ stages:
       - job: UpdateK8sManifests
         displayName: "Patch image tags in deployment manifests"
         pool:
-          name: "self-hosted-agents"
+          name: "Default"
         steps:
           - checkout: self
             persistCredentials: true
@@ -141,7 +141,7 @@ stages:
       - job: ArgoCDSync
         displayName: "Sync application and verify health"
         pool:
-          name: "self-hosted-agents"
+          name: "Default"
         steps:
           - task: AzureKeyVault@2
             displayName: "Fetch ArgoCD password from Key Vault"
@@ -208,7 +208,7 @@ stages:
         displayName: "Baseline scan — all three services via Ingress"
         continueOnError: true
         pool:
-          name: "self-hosted-agents"
+          name: "Default"
         steps:
           - script: |
               INGRESS_IP="4.158.73.97"
