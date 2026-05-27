@@ -155,10 +155,18 @@ stages:
               # Pin ArgoCD CLI to match the server version (v3.4.2).
               # Reason: v2.x CLI against a v3.x server can produce API
               # incompatibilities; matching versions avoids silent failures.
+              # Arch-aware: ARM64 agent needs argocd-linux-arm64.
               ARGOCD_VERSION="v3.4.2"
-              curl -sSL -o /usr/local/bin/argocd \
-                "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64"
-              chmod +x /usr/local/bin/argocd
+              ARCH=$(uname -m)
+              if [ "${ARCH}" = "aarch64" ]; then
+                ARGOCD_ARCH="arm64"
+              else
+                ARGOCD_ARCH="amd64"
+              fi
+              curl -sSL -o /tmp/argocd \
+                "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-${ARGOCD_ARCH}"
+              sudo mv /tmp/argocd /usr/local/bin/argocd
+              sudo chmod +x /usr/local/bin/argocd
               argocd version --client
             displayName: "Install ArgoCD CLI (pinned v3.4.2)"
 
