@@ -29,7 +29,7 @@ spec:
 
       containers:
         - name: dotnet-app
-          image: acrgitopsproject.azurecr.io/dotnet-app:1.0.0
+          image: acrgitopsproject.azurecr.io/dotnet-app:15
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

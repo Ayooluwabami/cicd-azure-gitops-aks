@@ -86,6 +86,15 @@ stages:
             displayName: "Configure Git with Key Vault PAT"
 
           - script: |
+              # Sync local workspace with GitHub's current HEAD.
+              # 'checkout: self' checks out the Azure DevOps repo; GitHub may have
+              # additional commits (e.g. manual pushes) made since checkout time.
+              # Without this reset, git push is rejected as non-fast-forward.
+              git fetch origin main
+              git reset --hard origin/main
+            displayName: "Sync local workspace with GitHub HEAD"
+
+          - script: |
               # Replace the image tag in all three deployment manifests.
               # The sed pattern matches any existing tag (not just 'latest')
               # so re-running the pipeline always produces a clean diff.
@@ -104,13 +113,18 @@ stages:
 
           - script: |
               git add k8s/deployments/
+              # Guard: skip commit+push if image tags are already up to date.
+              if git diff --staged --quiet; then
+                echo "No manifest changes — image tags already at $(IMAGE_TAG)"
+                exit 0
+              fi
               # [skip ci] prevents this commit from re-triggering the CI pipeline.
               git commit -m "ci(cd): update image tags to build $(IMAGE_TAG) [skip ci]
 
               Pipeline run: $(Build.BuildId)
               Triggered by: $(Build.RequestedFor)
               Branch: $(Build.SourceBranchName)"
-              git push origin main
+              git push origin HEAD:main
             displayName: "Commit and push manifest changes"
 
   # ============================================================
