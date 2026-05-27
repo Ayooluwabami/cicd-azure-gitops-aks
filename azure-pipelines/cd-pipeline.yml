@@ -164,12 +164,15 @@ stages:
 
           - script: |
               # --grpc-web: use HTTP/1.1 grpc-web transport.
-              # Preferred over --insecure because it does not skip TLS
-              # certificate validation — it adapts the transport protocol.
+              # --insecure: suppress the interactive "Proceed insecurely (y/n)?"
+              # prompt that ArgoCD shows when the server uses a self-signed cert.
+              # Without --insecure the pipeline agent hangs indefinitely waiting
+              # for stdin that never arrives.
               argocd login $(ARGOCD_SERVER) \
                 --username admin \
                 --password $(argocd-admin-password) \
-                --grpc-web
+                --grpc-web \
+                --insecure
 
               argocd app sync microservices-app --force --prune
               # Wait up to 3 minutes for the application to become healthy.
@@ -185,5 +188,5 @@ stages:
 
           - script: |
               echo "=== Deployment summary ==="
-              argocd app get microservices-app
+              argocd app get microservices-app --insecure
             displayName: "Print deployment status"
