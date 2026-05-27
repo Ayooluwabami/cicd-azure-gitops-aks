@@ -30,7 +30,7 @@ stages:
         displayName: "Scan for committed secrets"
         continueOnError: true
         pool:
-          vmImage: "ubuntu-latest"
+          name: "self-hosted-agents"
         steps:
           - checkout: self
             fetchDepth: 0
@@ -71,7 +71,7 @@ stages:
         displayName: "Scan K8s manifests for misconfigurations"
         continueOnError: true
         pool:
-          vmImage: "ubuntu-latest"
+          name: "self-hosted-agents"
         steps:
           - task: Cache@2
             displayName: "Cache pip wheels — checkov"
@@ -122,7 +122,7 @@ stages:
         displayName: "Scan microservice source code"
         continueOnError: true
         pool:
-          vmImage: "ubuntu-latest"
+          name: "self-hosted-agents"
         steps:
           - task: Cache@2
             displayName: "Cache pip wheels — semgrep"
@@ -170,7 +170,7 @@ stages:
       - job: BuildScanPushPython
         displayName: "python-app"
         pool:
-          vmImage: "ubuntu-latest"
+          name: "self-hosted-agents"
         steps:
           - task: AzureCLI@2
             displayName: "ACR login via Service Principal"
@@ -241,7 +241,7 @@ stages:
       - job: BuildScanPushNodeJS
         displayName: "nodejs-app"
         pool:
-          vmImage: "ubuntu-latest"
+          name: "self-hosted-agents"
         steps:
           - task: AzureCLI@2
             displayName: "ACR login via Service Principal"
@@ -312,7 +312,7 @@ stages:
       - job: BuildScanPushDotNet
         displayName: "dotnet-app"
         pool:
-          vmImage: "ubuntu-latest"
+          name: "self-hosted-agents"
         steps:
           - task: AzureCLI@2
             displayName: "ACR login via Service Principal"
