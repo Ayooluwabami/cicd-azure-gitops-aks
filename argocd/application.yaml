@@ -11,6 +11,7 @@ spec:
     path: k8s
     directory:
       recurse: true     # scan k8s/deployments/, k8s/services/, k8s/rbac/ etc.
+      exclude: 'bootstrap/**'  # exclude AppProject — ArgoCD cannot sync its own project definition
   destination:
     server: https://kubernetes.default.svc
     namespace: microservices
